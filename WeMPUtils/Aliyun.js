@@ -1,5 +1,9 @@
-class OSS {
+class State {
   state = {};
+  getState() { return this.state }
+  setState(r) { Object.assign(this.state, r) }
+}
+class OSS extends State {
   B64HMACSHA1;
   B64MD5;
   Base64;
@@ -11,16 +15,21 @@ class OSS {
     accessKeyId,
     accessKeySecret,
     bucketName,
+    conditions = [{}],
     endPoint = '',
+    expiresIn = 900,
     securityToken = 0,
   } = {}) {
+    super();
     if (accessKeyId === undefined || accessKeySecret === undefined || typeof Base64 !== 'function')
       throw new Error('Param missing! \nPlease use me like this: \n\nnew OSS({\n\taccessKeyId: "",\n\taccessKeySecret: ""\n});\n\n');
     Object.assign(this.state, {
+      bucketName,
+      conditions,
+      endPoint,
+      expiresIn,
       id: accessKeyId,
       secret: accessKeySecret,
-      bucketName,
-      endPoint,
       token: securityToken,
     });
     this.Base64 = new Base64();
@@ -32,11 +41,14 @@ class OSS {
     bucketName = this.state.bucketName,
     data = '',
     endPoint = this.state.endPoint,
-    expires = parseInt(Date.parse(new Date()) / 1000 + 900),
+    expiresIn = this.state.expiresIn,
     extraHeader = { 'content-type': 'application/xml' },
     method = 'GET',
     resourse,
   } = {}) {
+    if (resourse === undefined)
+      throw new Error('\nParam missing!\n\n');
+    let expires = parseInt(Date.parse(new Date()) / 1000 + expiresIn);
     data = this.B64MD5(data);
     this.state.token ? extraHeader['x-oss-security-token'] = this.state.token : 0;
     let s = [method, data, extraHeader['content-type'], expires];
@@ -98,8 +110,8 @@ class OSS {
     extraHeader = {},
     filePath,
     key = '${filename}',
-    expiresIn = 900,
-    conditions = [{}],
+    expiresIn = this.state.expiresIn,
+    conditions = this.state.conditions,
     success = () => { },
     fail = () => { },
     complete = () => { },
