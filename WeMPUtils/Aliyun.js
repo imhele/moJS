@@ -116,11 +116,16 @@ class OSS extends State {
     fail = () => { },
     complete = () => { },
   } = {}) {
-    if (!endPoint || key === undefined || filePath === undefined)
+    if (!endPoint || filePath === undefined)
       throw new Error('\nParam missing!\n\n');
     let e = new Date(), policy;
     e.setTime(Date.parse(new Date) + expiresIn * 1000);
-    policy = this.Base64.encode(JSON.stringify({ expiration: e.toISOString(), conditions }));
+    this.state._policy && this.state._policyExpires > parseInt(Date.parse(new Date()) / 1000)
+      ? policy = this.state._policy
+      : (()=>{
+        policy = this.Base64.encode(JSON.stringify({ expiration: e.toISOString(), conditions }));
+        [this.state._policy, this.state._policyExpires] = [policy, parseInt(Date.parse(e) / 1000)];
+      })();
     this.state.token ? extraHeader['x-oss-security-token'] = this.state.token : 0;
     let s = r => { if (r.statusCode < 300) { success(r) } else { fail(r) } };
     return wx.uploadFile({
