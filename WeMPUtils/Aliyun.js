@@ -119,10 +119,10 @@ class OSS extends State {
     if (!endPoint || filePath === undefined)
       throw new Error('\nParam missing!\n\n');
     let e = new Date(), policy;
-    e.setTime(Date.parse(new Date) + expiresIn * 1000);
-    this.state._policy && this.state._policyExpires > parseInt(Date.parse(new Date()) / 1000)
+    conditions === this.state.conditions && this.state._policy && this.state._policyExpires > parseInt(Date.parse(e) / 1000 + 9)
       ? policy = this.state._policy
-      : (()=>{
+      : (() => {
+        e.setTime(Date.parse(e) + expiresIn * 1000);
         policy = this.Base64.encode(JSON.stringify({ expiration: e.toISOString(), conditions }));
         [this.state._policy, this.state._policyExpires] = [policy, parseInt(Date.parse(e) / 1000)];
       })();
@@ -148,28 +148,38 @@ class OSS extends State {
     bucketName = this.state.bucketName,
     delimiter = '/',
     endPoint = this.state.endPoint,
+    expiresIn = this.state.expiresIn,
+    header,
     marker,
     maxKeys,
-    prefix,
+    prefix = null,
+    url,
     success = () => { },
     fail = () => { },
     complete = () => { },
   } = {}) {
-    if (!endPoint || bucketName === undefined)
-      throw new Error('\nParam missing!\n\n');
-    let resourse = '/' + bucketName + '/';
-    let { signature, expires, header, url } = this.getSignature({ bucketName, endPoint, resourse });
-    url = url + [''
-      , prefix ? 'prefix=' + prefix : ''
-      , maxKeys ? 'max-keys=' + maxKeys : ''
-      , marker ? 'marker=' + marker : ''
-      , delimiter ? 'delimiter=' + delimiter : ''
-    ].join('&');
+    if (!url || !header) {
+      if (!endPoint || bucketName === undefined)
+        throw new Error('\nParam missing!\n\n');
+      let resourse = '/' + bucketName + '/';
+      let r = this.getSignature({ bucketName, endPoint, expiresIn, resourse });
+      let { signature, expires } = r;
+      [header, url] = [r.header, r.url];
+      url += [''
+        , prefix ? 'prefix=' + prefix : ''
+        , maxKeys ? 'max-keys=' + maxKeys : ''
+        , marker ? 'marker=' + marker : ''
+        , delimiter ? 'delimiter=' + delimiter : ''
+      ].join('&');
+    }
     let s = r => {
       if (r.statusCode < 300) {
         Object.assign(r, {
+          url,
+          header,
+          prefix,
           dir: Array.from(this.DOMparser.parseFromString(r.data).getElementsByTagName('Prefix')).slice(1).map(k => k.firstChild.data),
-          key: Array.from(this.DOMparser.parseFromString(r.data).getElementsByTagName('Key')).map(k => k.firstChild.data)
+          key: Array.from(this.DOMparser.parseFromString(r.data).getElementsByTagName('Key')).map(k => k.firstChild.data),
         });
         success(r);
       } else { fail(r) }
