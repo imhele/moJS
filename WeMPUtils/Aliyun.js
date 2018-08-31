@@ -36,7 +36,7 @@ class OSS extends State {
     });
     this.Base64 = new Base64();
     this.DOMparser = XML ? new (require(XML)).DOMParser() : undefined;
-    this.B64MD5 = B64MD5 ? require(B64MD5).b64_md5 : undefined;
+    this.B64MD5 = B64MD5 ? require(B64MD5).base64 : undefined;
     this.B64HMACSHA1 = B64HMACSHA1 ? require(B64HMACSHA1) : undefined;
   }
   getSignature({
