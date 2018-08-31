@@ -19,6 +19,7 @@ class OSS extends State {
     endPoint = '',
     expiresIn = 900,
     securityToken = 0,
+    tokenExpires = Date.parse(new Date()) / 1000 + 3600,
   } = {}) {
     super();
     if (accessKeyId === undefined || accessKeySecret === undefined || typeof Base64 !== 'function')
@@ -31,6 +32,7 @@ class OSS extends State {
       id: accessKeyId,
       secret: accessKeySecret,
       token: securityToken,
+      tokenExpires,
     });
     this.Base64 = new Base64();
     this.DOMparser = XML ? new (require(XML)).DOMParser() : undefined;
@@ -82,7 +84,7 @@ class OSS extends State {
     if (!endPoint || key === undefined || bucketName === undefined)
       throw new Error('\nParam missing!\n\n');
     let resourse = '/' + bucketName + '/' + key;
-    let { signature, expires, header, url } = this.getSignature({ bucketName, endPoint, extraHeader, resourse });
+    let { header, url } = this.getSignature({ bucketName, endPoint, extraHeader, resourse });
     let s = r => { if (r.statusCode < 300) { success(r) } else { fail(r) } };
     return download
       ? wx.downloadFile({ url, header, success: s, fail, complete })
@@ -90,10 +92,10 @@ class OSS extends State {
   }
   putObject({
     bucketName = this.state.bucketName,
+    data = '',
     endPoint = this.state.endPoint,
     extraHeader,
     key,
-    data = '',
     success = () => { },
     fail = () => { },
     complete = () => { },
@@ -101,7 +103,7 @@ class OSS extends State {
     if (!endPoint || key === undefined || bucketName === undefined)
       throw new Error('\nParam missing!\n\n');
     let resourse = '/' + bucketName + '/' + key, method = 'PUT';
-    let { signature, expires, header, url } = this.getSignature({ bucketName, data, endPoint, extraHeader, method, resourse });
+    let { header, url } = this.getSignature({ bucketName, data, endPoint, extraHeader, method, resourse });
     let s = r => { if (r.statusCode < 300) { success(r) } else { fail(r) } };
     return wx.request({ url, method, header, data, success: s, fail, complete });
   }
@@ -154,17 +156,17 @@ class OSS extends State {
     maxKeys,
     prefix = null,
     url,
+    urlExpires,
     success = () => { },
     fail = () => { },
     complete = () => { },
   } = {}) {
-    if (!url || !header) {
+    if (!url || !header || !urlExpires || urlExpires < parseInt(Date.parse(new Date()) / 1000 + 9)) {
       if (!endPoint || bucketName === undefined)
         throw new Error('\nParam missing!\n\n');
       let resourse = '/' + bucketName + '/';
       let r = this.getSignature({ bucketName, endPoint, expiresIn, resourse });
-      let { signature, expires } = r;
-      [header, url] = [r.header, r.url];
+      [header, url, urlExpires] = [r.header, r.url, r.expires];
       url += [''
         , prefix ? 'prefix=' + prefix : ''
         , maxKeys ? 'max-keys=' + maxKeys : ''
@@ -177,6 +179,8 @@ class OSS extends State {
         Object.assign(r, {
           url,
           header,
+          urlExpires,
+          isTruncated: this.DOMparser.parseFromString(r.data).getElementsByTagName('IsTruncated')[0].firstChild.data,
           prefix,
           dir: Array.from(this.DOMparser.parseFromString(r.data).getElementsByTagName('Prefix')).slice(1).map(k => k.firstChild.data),
           key: Array.from(this.DOMparser.parseFromString(r.data).getElementsByTagName('Key')).map(k => k.firstChild.data),
@@ -197,7 +201,7 @@ class OSS extends State {
     if (!endPoint || key === undefined || bucketName === undefined)
       throw new Error('\nParam missing!\n\n');
     let resourse = '/' + bucketName + '/' + key, method = 'DELETE';
-    let { signature, expires, header, url } = this.getSignature({ bucketName, endPoint, method, resourse });
+    let { header, url } = this.getSignature({ bucketName, endPoint, method, resourse });
     let s = r => { if (r.statusCode < 300) { success(r) } else { fail(r) } };
     return wx.request({ url, method, header, success: s, fail, complete });
   }
@@ -215,8 +219,59 @@ class OSS extends State {
       + key.join(']]></Key></Object><Object><Key><![CDATA[')
       + ']]></Key></Object></Delete>';
     let resourse = '/' + bucketName + '/?delete', method = 'POST';
-    let { signature, expires, header, url } = this.getSignature({ bucketName, data, endPoint, method, resourse });
+    let { header, url } = this.getSignature({ bucketName, data, endPoint, method, resourse });
     let s = r => { if (r.statusCode < 300) { success(r) } else { fail(r) } };
+    return wx.request({ url, method, header, data, success: s, fail, complete });
+  }
+  headObject({
+    bucketName = this.state.bucketName,
+    endPoint = this.state.endPoint,
+    extraHeader,
+    key,
+    success = () => { },
+    fail = () => { },
+    complete = () => { },
+  } = {}) {
+    if (!endPoint || key === undefined || bucketName === undefined)
+      throw new Error('\nParam missing!\n\n');
+    let resourse = '/' + bucketName + '/' + key, method = 'HEAD';
+    let { header, url } = this.getSignature({ bucketName, endPoint, extraHeader, method, resourse });
+    let s = r => { if (r.statusCode < 300) { success(r) } else { fail(r) } };
+    return wx.request({ url, method, header, success: s, fail, complete });
+  }
+  appendObject({
+    bucketName = this.state.bucketName,
+    data = '',
+    endPoint = this.state.endPoint,
+    extraHeader,
+    key,
+    position = 0,
+    retry = false,
+    success = () => { },
+    fail = () => { },
+    complete = () => { },
+  } = {}) {
+    if (!endPoint || key === undefined || bucketName === undefined)
+      throw new Error('\nParam missing!\n\n');
+    let resourse = '/' + bucketName + '/' + key + '?append&position=' + position, method = 'POST';
+    let { header, url } = this.getSignature({ bucketName, data, endPoint, extraHeader, method, resourse });
+    let s = r => {
+      if (r.statusCode < 300) { success(r) }
+      else if (r.statusCode === 409 && retry) {
+        this.appendObject({
+          bucketName,
+          data,
+          endPoint,
+          extraHeader,
+          key,
+          position: r.header['x-oss-next-append-position'],
+          success,
+          fail,
+          complete,
+        });
+      }
+      else { fail(r) }
+    };
     return wx.request({ url, method, header, data, success: s, fail, complete });
   }
 }
