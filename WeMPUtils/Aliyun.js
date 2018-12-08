@@ -65,8 +65,8 @@ class OSS extends State {
       signature: s,
       url: endPoint
         + resourse
-        + (resourse.search(/\?/) ? '?' : '')
-        + '&Expires=' + expires
+        + (resourse.search(/\?/) === -1 ? '?' : '&')
+        + 'Expires=' + expires
         + '&Signature=' + encodeURIComponent(s)
         + '&OSSAccessKeyId=' + this.state.id,
     };
